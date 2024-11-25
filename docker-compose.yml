@@ -1,0 +1,7 @@
+services:
+  hamming-discovery-agent-frontend:
+    image: hamming-discovery-agent-frontend:latest
+    container_name: hamming-discovery-agent-frontend
+    build: .
+    ports:
+      - "3000:3000"

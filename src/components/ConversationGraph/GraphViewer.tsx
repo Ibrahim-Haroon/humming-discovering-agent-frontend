@@ -12,17 +12,6 @@ import 'reactflow/dist/style.css';
 type NodeState = 'INITIAL' | 'IN_PROGRESS' | 'TERMINAL_SUCCESS' |
     'TERMINAL_FALLBACK' | 'TERMINAL_TRANSFER' | 'ERROR';
 
-interface NodeData {
-    id: string;
-    state: NodeState;
-    prompt: string;
-}
-
-interface MockData {
-    nodes: NodeData[];
-    edges: { source: string; target: string; }[];
-}
-
 const nodeColors: Record<NodeState, string> = {
     INITIAL: '#e0f2e0',
     IN_PROGRESS: '#fff',
@@ -32,65 +21,73 @@ const nodeColors: Record<NodeState, string> = {
     ERROR: '#FF6B6B'
 };
 
-const mapStateToLabel = (state: NodeState, prompt: string) => {
-    const shortPrompt = prompt?.split('.')[0]?.slice(0, 30);
+interface GraphNode {
+    id: string;
+    state: NodeState;
+    prompt?: string;
+}
 
-    switch (state) {
-        case 'INITIAL':
-            return 'Start';
-        case 'IN_PROGRESS':
-            return `In Progress: ${shortPrompt}...`;
-        case 'TERMINAL_SUCCESS':
-            return `Success: ${shortPrompt}...`;
-        case 'TERMINAL_FALLBACK':
-            return `Fallback: ${shortPrompt}...`;
-        case 'TERMINAL_TRANSFER':
-            return `Transfer: ${shortPrompt}...`;
-        case 'ERROR':
-            return `Error: ${shortPrompt}...`;
-        default:
-            return state;
-    }
+interface GraphEdge {
+    source: string;
+    target: string;
+}
+
+interface GraphData {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+}
+
+const formatLabel = (state: string, content: string) => {
+    return `${state.replace('TERMINAL_', '')}: ${content || ''}`;
 };
 
 const ConversationGraphViewer = () => {
     const [nodes, setNodes] = useState<Node[]>([]);
     const [edges, setEdges] = useState<Edge[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const fetchGraphData = useCallback(async () => {
-        const mockData: MockData = {
-            nodes: [
-                { id: '1', state: 'INITIAL', prompt: 'Initial contact' },
-                { id: '2', state: 'IN_PROGRESS', prompt: 'AC not cooling properly' },
-                { id: '3', state: 'TERMINAL_SUCCESS', prompt: 'Scheduled maintenance visit' }
-            ],
-            edges: [
-                { source: '1', target: '2' },
-                { source: '2', target: '3' }
-            ]
-        };
+        try {
+            setIsLoading(true);
+            const response = await fetch('http://localhost:8000/api/conversation-graph');
+            if (!response.ok) throw new Error('Failed to fetch graph data');
 
-        const newNodes = mockData.nodes.map(node => ({
-            id: node.id,
-            data: { label: mapStateToLabel(node.state, node.prompt) },
-            position: { x: Math.random() * 500, y: Math.random() * 500 },
-            style: {
-                background: nodeColors[node.state],
-                border: '1px solid #222',
-                borderRadius: '8px',
-                padding: '10px'
-            }
-        }));
+            const data: GraphData = await response.json();
 
-        const newEdges = mockData.edges.map((edge, i) => ({
-            id: `e${i}`,
-            source: edge.source,
-            target: edge.target,
-            animated: true
-        }));
+            const newNodes = data.nodes.map((node: GraphNode) => ({
+                id: node.id,
+                data: {
+                    label: formatLabel(node.state, node.prompt || ''),
+                    prompt: node.prompt
+                },
+                position: { x: Math.random() * 500, y: Math.random() * 500 },
+                style: {
+                    background: nodeColors[node.state],
+                    padding: '10px',
+                    borderRadius: '8px',
+                    border: '1px solid #222',
+                    width: 200
+                }
+            }));
 
-        setNodes(newNodes);
-        setEdges(newEdges);
+            const newEdges = data.edges.map((edge: GraphEdge, i: number) => ({
+                id: `e${i}`,
+                source: edge.source,
+                target: edge.target,
+                animated: true,
+                style: { stroke: '#222' }
+            }));
+
+            setNodes(newNodes);
+            setEdges(newEdges);
+            setError(null);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unknown error');
+            console.error('Error fetching graph:', err);
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
 
     useEffect(() => {
@@ -105,7 +102,9 @@ const ConversationGraphViewer = () => {
     );
 
     return (
-        <div className="w-full h-screen">
+        <div className="w-full h-screen relative">
+            {isLoading && <div className="absolute top-4 right-4">Loading...</div>}
+            {error && <div className="absolute top-4 right-4 text-red-500">{error}</div>}
             <ReactFlow
                 nodes={nodes}
                 edges={edges}

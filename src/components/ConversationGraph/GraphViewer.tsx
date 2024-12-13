@@ -9,27 +9,25 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-type NodeState = 'INITIAL' | 'IN_PROGRESS' | 'TERMINAL_SUCCESS' |
-    'TERMINAL_FALLBACK' | 'TERMINAL_TRANSFER' | 'ERROR';
+type NodeState = 'INITIAL' | 'IN_PROGRESS' | 'TERMINAL';
 
 const nodeColors: Record<NodeState, string> = {
     INITIAL: '#e0f2e0',
     IN_PROGRESS: '#fff',
-    TERMINAL_SUCCESS: '#90EE90',
-    TERMINAL_FALLBACK: '#FFB6C1',
-    TERMINAL_TRANSFER: '#FFD700',
-    ERROR: '#FF6B6B'
+    TERMINAL: '#FF6B6B'
 };
 
 interface GraphNode {
     id: string;
-    state: NodeState;
-    prompt?: string;
+    is_initial: Boolean;
+    is_terminal: Boolean;
+    decision_point: string;
 }
 
 interface GraphEdge {
     source: string;
     target: string;
+    message: string;
 }
 
 interface GraphData {
@@ -37,9 +35,26 @@ interface GraphData {
     edges: GraphEdge[];
 }
 
-const formatLabel = (state: string, content: string) => {
-    return `${state.replace('TERMINAL_', '')}: ${content || ''}`;
+const formatLabel = (node: GraphNode) => {
+    if (node.is_initial) {
+        return `{'START')}: ${node.decision_point}`;
+    }
+    else if (node.is_terminal) {
+        return `{'TERMINAL')}: ${node.decision_point}`;
+    }
+    return `${node.decision_point}`;
 };
+
+function get_state(node: GraphNode): NodeState {
+    if (node.is_initial) {
+        return "INITIAL";
+    }
+    else if (node.is_terminal) {
+        return "TERMINAL"
+    }
+
+    return "IN_PROGRESS";
+}
 
 const ConversationGraphViewer = () => {
     const [nodes, setNodes] = useState<Node[]>([]);
@@ -50,7 +65,7 @@ const ConversationGraphViewer = () => {
     const fetchGraphData = useCallback(async () => {
         try {
             setIsLoading(true);
-            const response = await fetch('http://localhost:8000/api/conversation-graph');
+            const response = await fetch('http://localhost:8000/v1/conversation-graph');
             if (!response.ok) throw new Error('Failed to fetch graph data');
 
             const data: GraphData = await response.json();
@@ -58,12 +73,12 @@ const ConversationGraphViewer = () => {
             const newNodes = data.nodes.map((node: GraphNode) => ({
                 id: node.id,
                 data: {
-                    label: formatLabel(node.state, node.prompt || ''),
-                    prompt: node.prompt
+                    label: formatLabel(node),
+                    decision_point: node.decision_point
                 },
                 position: { x: Math.random() * 500, y: Math.random() * 500 },
                 style: {
-                    background: nodeColors[node.state],
+                    background: nodeColors[get_state(node)],
                     padding: '10px',
                     borderRadius: '8px',
                     border: '1px solid #222',
@@ -75,6 +90,7 @@ const ConversationGraphViewer = () => {
                 id: `e${i}`,
                 source: edge.source,
                 target: edge.target,
+                message: edge.message,
                 animated: true,
                 style: { stroke: '#222' }
             }));
